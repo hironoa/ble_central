@@ -57,7 +57,6 @@ class Test(Thread, Peripheral):
             while self.isConnected == False:  # つながるまでconnectする
                 try:
                     self.connect(self.dev)
-                    # self.connect(self.dev.addr, bluepy.btle.ADDR_TYPE_RANDOM, self.dev.iface)
                     self.isConnected = True
                 except BTLEException as e:
                     DBG('BTLE Exception while connect on ', self.dev.addr)
@@ -71,27 +70,16 @@ class Test(Thread, Peripheral):
                 # self.ScanInformation()
 
                 svc = self.getServiceByUUID('1111')
-                MSG(svc)
                 for desc in svc.getDescriptors():
                     if desc.uuid.getCommonName() == 'Client Characteristic Configuration':
                         MSG(desc.handle, desc.read(), str(self.readCharacteristic(svc.hndStart+2)))
-                        self.writeCharacteristic(desc.handle, b'\x01\x00', True)
-                        # desc.write(b'\x01\x00', True)
+                        # self.writeCharacteristic(desc.handle, b'\x01\x00', True)
+                        desc.write(b'\x01\x00', True)
                         MSG(desc.handle, desc.read())
 
                 while True:
                     if self.waitForNotifications(1.0):
                         continue
-
-                # self.writeCharacteristic(69, b'\x00\x00', True)
-                # MSG('[[Notify?]] ', self.readCharacteristic(69))
-                # if self.waitForNotifications(1.0):
-                #     continue
-
-                # MSG(self.readCharacteristic(62))
-                # MSG(str(self.count).encode())
-                # self.count += 1
-                # self.writeCharacteristic(62, str(self.count).encode(), True)
 
                 t.cancel()
                 # time.sleep(1)
