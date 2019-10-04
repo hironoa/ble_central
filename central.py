@@ -1,13 +1,23 @@
-from bluepy.btle import Peripheral, DefaultDelegate, Scanner, BTLEException, UUID
+from bluepy.btle import *
 import bluepy.btle
 import time
 import sys
 import struct
 from threading import Thread, Timer
 
+bluepy.btle.Debugging = True
+
 Debugging = False
 def DBG(*args):
     if Debugging:
+        msg = " ".join([str(a) for a in args])
+        print(msg)
+        sys.stdout.flush()
+
+
+Logging = False
+def LOG(*args):
+    if Logging:
         msg = " ".join([str(a) for a in args])
         print(msg)
         sys.stdout.flush()
@@ -34,15 +44,18 @@ class Test(Thread, Peripheral):
         self.dev = dev
         self.isConnected = False
         self.count = 0
-        print('thread init %s' % dev.addr)
+        MSG('thread init ', dev.addr)
 
     def run(self):
+        MSG('thread run ', self.dev.addr)
         while True:
             t = Timer(30, timeoutRetry, [self.dev.addr])
             t.start()
+
             while self.isConnected == False:  # つながるまでconnectする
                 try:
                     self.connect(self.dev)
+                    # self.connect(self.dev.addr, bluepy.btle.ADDR_TYPE_RANDOM, self.dev.iface)
                     self.isConnected = True
                 except BTLEException as e:
                     DBG('BTLE Exception while connect on ', self.dev.addr)
@@ -50,44 +63,85 @@ class Test(Thread, Peripheral):
                     DBG('  args:' + str(e.args))
                     # pass
 
-            MSG('connected to ', self.dev.addr)
+                MSG('\n', 'connected to ', self.dev.addr)
 
             try:
-                for service in self.getServices():
-                    MSG("=" * 100)
-                    MSG('[[Service]]', service.uuid, service)
-                    try:
-                        for desc in service.getDescriptors():
-                            MSG('[[Desc]] ', desc.uuid, desc.handle, desc.uuid.getCommonName())
-                    except:
-                        pass
-                    for char in service.getCharacteristics():
-                        if char.supportsRead():
-                            data = char.read()
-                        MSG('[[Characteristics]] ', char.uuid, char.getHandle(), char.propertiesToString(), char.properties, data)
+                # self.ScanInformation()
 
-                self.writeCharacteristic(69, b'\x00\x00', True)
-                MSG('[[Notify?]] ', self.readCharacteristic(69))
-                if self.waitForNotifications(1.0):
-                    continue
+                svc = self.getServiceByUUID('1111')
+                MSG(svc)
+                for desc in svc.getDescriptors():
+                    if desc.uuid.getCommonName() == 'Client Characteristic Configuration':
+                        MSG(desc.handle, desc.read(), str(self.readCharacteristic(svc.hndStart+2)))
+                        self.writeCharacteristic(desc.handle, b'\x01\x00', True)
+                        # desc.write(b'\x01\x00', True)
+                        MSG(desc.handle, desc.read())
 
-                MSG(self.readCharacteristic(62))
-                MSG(str(self.count).encode())
-                self.count += 1
-                self.writeCharacteristic(62, str(self.count).encode(), True)
+                while True:
+                    if self.waitForNotifications(1.0):
+                        continue
+
+                # self.writeCharacteristic(69, b'\x00\x00', True)
+                # MSG('[[Notify?]] ', self.readCharacteristic(69))
+                # if self.waitForNotifications(1.0):
+                #     continue
+
+                # MSG(self.readCharacteristic(62))
+                # MSG(str(self.count).encode())
+                # self.count += 1
+                # self.writeCharacteristic(62, str(self.count).encode(), True)
 
                 t.cancel()
-                time.sleep(1)
+                # time.sleep(1)
 
             except BTLEException as e:
-                DBG('BTLE Exception while getCharacteristics on ', self.dev.addr)
+                MSG('BTLE Exception while getCharacteristics on ', self.dev.addr)
                 DBG('  type:' + str(type(e)))
                 DBG('  args:' + str(e.args))
                 self.disconnect()
                 self.isConnected = False
                 t.cancel()
 
+    def ScanInformation(self):
+        try:
+            for service in self.getServices():
+                LOG("=" * 100)
+                LOG('[[Service]]', service.uuid, service)
+
+                # 以下のServiceのCharacteristicをReadするとエラー？になるため、スキップする
+                if service.uuid.getCommonName() == 'Battery Service': continue
+                if service.uuid.getCommonName() == 'Current Time Service': continue
+                if service.uuid.getCommonName() == '89d3502b-0f36-433a-8ef4-c502ad55f8dc': continue
+
+                for desc in service.getDescriptors():
+                    try:
+                        LOG('[[Desc]] ', desc.uuid, desc.handle, desc.uuid.getCommonName(), str(desc.read()))
+                    except BTLEException as e:
+                        LOG('[[Desc]] ', desc.uuid, desc.handle, desc.uuid.getCommonName())
+                        # MSG('[[Desc]] ', 'Err', str(type(e)), str(e.args))
+
+                for char in service.getCharacteristics():
+                    try:
+                        if char.supportsRead():
+                            # data = char.read()
+                            data = char.peripheral.readCharacteristic(char.getHandle())
+                            LOG('[[Characteristics]] ', char.uuid, char.getHandle(), char.propertiesToString(), data)
+                        else:
+                            LOG('[[Characteristics]] ', char.uuid, char.getHandle(), char.propertiesToString())
+                    except BTLEException as e:
+                        DBG('[[Characteristics]] ', 'Err', str(type(e)), str(e.args))
+                        self.disconnect()
+                        self.isConnected = False
+
+        except BTLEException as e:
+            DBG('BTLE Exception while getCharacteristics on ', self.dev.addr)
+            DBG('  type:' + str(type(e)))
+            DBG('  args:' + str(e.args))
+            self.disconnect()
+            self.isConnected = False
+        
     def forceDisconnect(self):
+        MSG('forceDisconnect')
         if self.isConnected:
             self.disconnect()
         self.isConnected = False
@@ -97,6 +151,9 @@ scannedDevs = {}
 class ScanDelegate(DefaultDelegate):
     def __init__(self):
         DefaultDelegate.__init__(self)
+
+    def handleNotification(self, cHandle, data):
+        MSG('[[Notification]] ', cHandle, data)
 
     def handleDiscovery(self, dev, isNewDev, isNewData):  # スキャンハンドラー
         if isNewDev:  # 新しいデバイスが見つかったら
@@ -113,16 +170,19 @@ class ScanDelegate(DefaultDelegate):
                     scannedDevs[dev.addr] = devThread
                     devThread.start()  # スレッドを起動
 
-    def handleNotification(self, cHandle, data):
-        MSG('[[Notification]] ', data)
-
 def main():
     scanner = Scanner().withDelegate(ScanDelegate())
+    scanner.scan(10.0) # スキャンする。デバイスを見つけた後の処理はScanDelegateに任せる
+
     while True:
-        try:
-            scanner.scan(5.0) # スキャンする。デバイスを見つけた後の処理はScanDelegateに任せる
-        except BTLEException:
-            MSG('BTLE Exception while scannning.')
+        pass
+    # while True:
+    #     try:
+    #         scanner.scan(10.0) # スキャンする。デバイスを見つけた後の処理はScanDelegateに任せる
+    #     except BTLEException as e:
+    #         DBG('BTLE Exception while scannning.')
+    #         DBG('  type:' + str(type(e)))
+    #         DBG('  args:' + str(e.args))
 
 if __name__ == "__main__":
     main()
