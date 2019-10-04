@@ -5,7 +5,7 @@ import sys
 import struct
 from threading import Thread, Timer
 
-bluepy.btle.Debugging = True
+bluepy.btle.Debugging = False
 
 Debugging = False
 def DBG(*args):
@@ -41,6 +41,7 @@ class Test(Thread, Peripheral):
         Peripheral.__init__(self)
         Thread.__init__(self)
         self.setDaemon(True)
+        self.setDelegate(ScanDelegate())
         self.dev = dev
         self.isConnected = False
         self.count = 0
@@ -49,6 +50,7 @@ class Test(Thread, Peripheral):
     def run(self):
         MSG('thread run ', self.dev.addr)
         while True:
+            self.setDelegate(ScanDelegate())
             t = Timer(30, timeoutRetry, [self.dev.addr])
             t.start()
 
@@ -166,6 +168,7 @@ class ScanDelegate(DefaultDelegate):
                         return
                     MSG('New %s %s' % (value, dev.addr))
                     # print(scannedDevs)
+                    MSG(type(dev))
                     devThread = Test(dev)  # EnvSensorクラスのインスタンスを生成
                     scannedDevs[dev.addr] = devThread
                     devThread.start()  # スレッドを起動
@@ -174,15 +177,15 @@ def main():
     scanner = Scanner().withDelegate(ScanDelegate())
     scanner.scan(10.0) # スキャンする。デバイスを見つけた後の処理はScanDelegateに任せる
 
-    while True:
-        pass
     # while True:
-    #     try:
-    #         scanner.scan(10.0) # スキャンする。デバイスを見つけた後の処理はScanDelegateに任せる
-    #     except BTLEException as e:
-    #         DBG('BTLE Exception while scannning.')
-    #         DBG('  type:' + str(type(e)))
-    #         DBG('  args:' + str(e.args))
+    #     pass
+    while True:
+        try:
+            scanner.scan(10.0) # スキャンする。デバイスを見つけた後の処理はScanDelegateに任せる
+        except BTLEException as e:
+            DBG('BTLE Exception while scannning.')
+            DBG('  type:' + str(type(e)))
+            DBG('  args:' + str(e.args))
 
 if __name__ == "__main__":
     main()
