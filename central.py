@@ -64,30 +64,34 @@ class Test(Thread, Peripheral):
                     DBG('  args:' + str(e.args))
                     # pass
 
-                MSG('\n', 'connected to ', self.dev.addr)
+                # MSG('\n', 'connected to ', self.dev.addr)
 
             try:
                 # self.ScanInformation()
 
                 svc = self.getServiceByUUID('1111')
                 for desc in svc.getDescriptors():
+                    # MSG(desc.uuid, desc.handle, desc.uuid.getCommonName(), desc.read())
                     if desc.uuid.getCommonName() == 'Client Characteristic Configuration':
-                        MSG(desc.handle, desc.read(), str(self.readCharacteristic(svc.hndStart+2)))
-                        # self.writeCharacteristic(desc.handle, b'\x01\x00', True)
+                        # MSG(desc.handle, desc.read())
                         desc.write(b'\x01\x00', True)
-                        MSG(desc.handle, desc.read())
 
-                while True:
-                    if self.waitForNotifications(1.0):
-                        continue
+                for chr in svc.getCharacteristics():
+                    if chr.uuid.getCommonName() == '2222':
+                        MSG('Thread', self.count, self.dev.addr, chr.handle, chr.read())
+
+                self.count += 1
+                self.waitForNotifications(1.0)
+                # if self.waitForNotifications(1.0):
+                #     continue
 
                 t.cancel()
                 # time.sleep(1)
 
             except BTLEException as e:
                 MSG('BTLE Exception while getCharacteristics on ', self.dev.addr)
-                DBG('  type:' + str(type(e)))
-                DBG('  args:' + str(e.args))
+                MSG('  type:' + str(type(e)))
+                MSG('  args:' + str(e.args))
                 self.disconnect()
                 self.isConnected = False
                 t.cancel()
@@ -156,7 +160,6 @@ class ScanDelegate(DefaultDelegate):
                         return
                     MSG('New %s %s' % (value, dev.addr))
                     # print(scannedDevs)
-                    MSG(type(dev))
                     devThread = Test(dev)  # EnvSensorクラスのインスタンスを生成
                     scannedDevs[dev.addr] = devThread
                     devThread.start()  # スレッドを起動
@@ -169,7 +172,7 @@ def main():
     #     pass
     while True:
         try:
-            scanner.scan(10.0) # スキャンする。デバイスを見つけた後の処理はScanDelegateに任せる
+            scanner.scan(1.0) # スキャンする。デバイスを見つけた後の処理はScanDelegateに任せる
         except BTLEException as e:
             DBG('BTLE Exception while scannning.')
             DBG('  type:' + str(type(e)))
