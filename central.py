@@ -14,7 +14,6 @@ def DBG(*args):
         print(msg)
         sys.stdout.flush()
 
-
 Logging = False
 def LOG(*args):
     if Logging:
@@ -89,9 +88,9 @@ class Test(Thread, Peripheral):
                 # time.sleep(1)
 
             except BTLEException as e:
-                MSG('BTLE Exception while getCharacteristics on ', self.dev.addr)
-                MSG('  type:' + str(type(e)))
-                MSG('  args:' + str(e.args))
+                DBG('BTLE Exception while getCharacteristics on ', self.dev.addr)
+                DBG('  type:' + str(type(e)))
+                DBG('  args:' + str(e.args))
                 self.disconnect()
                 self.isConnected = False
                 t.cancel()
