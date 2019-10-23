@@ -4,6 +4,9 @@ import time
 import sys
 import struct
 from threading import Thread, Timer
+from serialcom import SerialCom
+
+send_data = ''
 
 bluepy.btle.Debugging = False
 
@@ -13,6 +16,7 @@ def DBG(*args):
         msg = " ".join([str(a) for a in args])
         print(msg)
         sys.stdout.flush()
+
 
 Logging = False
 def LOG(*args):
@@ -63,7 +67,7 @@ class Test(Thread, Peripheral):
                     DBG('  args:' + str(e.args))
                     # pass
 
-                # MSG('\n', 'connected to ', self.dev.addr)
+                MSG('\n', 'connected to ', self.dev.addr)
 
             try:
                 # self.ScanInformation()
@@ -75,25 +79,47 @@ class Test(Thread, Peripheral):
                         # MSG(desc.handle, desc.read())
                         desc.write(b'\x01\x00', True)
 
-                for chr in svc.getCharacteristics():
-                    if chr.uuid.getCommonName() == '2222':
-                        MSG('Thread', self.count, self.dev.addr, chr.handle, chr.read())
+                # for chr in svc.getCharacteristics():
+                #     if chr.uuid.getCommonName() == '2222':
+                #         MSG('Thread', self.count, self.dev.addr, chr.handle, chr.read())
 
-                self.count += 1
-                self.waitForNotifications(1.0)
-                # if self.waitForNotifications(1.0):
-                #     continue
+                while True:
+                    for chr in svc.getCharacteristics():
+                        if chr.uuid.getCommonName() == '2222':
+                            data = ser.getEcuData()
+                            if not data.empty():
+                                send_data = data.get()
+                                MSG('Send_data', send_data)
+                                chr.write(send_data, True)
+                            MSG('Thread', self.count, self.dev.addr, chr.handle, chr.read())
 
-                t.cancel()
+                    self.count += 1
+
+                # while True:
+                #     if self.waitForNotifications(1.0):
+                #         continue
+
+                # self.waitForNotifications(0.1)
+
+                    t.cancel()
                 # time.sleep(1)
 
             except BTLEException as e:
-                DBG('BTLE Exception while getCharacteristics on ', self.dev.addr)
+                MSG('BTLE Exception while getCharacteristics on ', self.dev.addr)
                 DBG('  type:' + str(type(e)))
-                DBG('  args:' + str(e.args))
+                MSG('  args:' + str(e.args))
                 self.disconnect()
                 self.isConnected = False
                 t.cancel()
+
+    def Send(self, data):
+        try:
+            svc = self.getServiceByUUID('1111')
+            for chr in svc.getCharacteristics():
+                if chr.uuid.getCommonName() == '2222':
+                    chr.write(data, True)
+        except:
+            MSG('Err')
 
     def ScanInformation(self):
         try:
@@ -147,6 +173,8 @@ class ScanDelegate(DefaultDelegate):
 
     def handleNotification(self, cHandle, data):
         MSG('[[Notification]] ', cHandle, data)
+        msg = str(data) + '\n\r'
+        ser.send(msg.encode('utf-8'))
 
     def handleDiscovery(self, dev, isNewDev, isNewData):  # スキャンハンドラー
         if isNewDev:  # 新しいデバイスが見つかったら
@@ -158,10 +186,29 @@ class ScanDelegate(DefaultDelegate):
                     if dev.addr in scannedDevs.keys():  # すでに見つけていたらスキップ
                         return
                     MSG('New %s %s' % (value, dev.addr))
-                    # print(scannedDevs)
                     devThread = Test(dev)  # EnvSensorクラスのインスタンスを生成
                     scannedDevs[dev.addr] = devThread
                     devThread.start()  # スレッドを起動
+                    print(type(scannedDevs))
+
+class EcuCom(SerialCom):
+    def recv_(self):
+        print("EcuCom thread%d" % self.count)
+        while not self.event.is_set():
+            line = self.ser.readline()
+            if len(line) > 0:
+                print("EcuCom data=%s" % line)
+                self.queue.put(line)
+        # send_data = ''
+        # while not self.queue.empty():
+            # for t in scannedDevs.values():
+            #     t.Send(line)
+            # send_data += line
+
+    def getEcuData(self):
+        return self.queue
+
+ser = EcuCom('/dev/ttyS0', '9600')
 
 def main():
     scanner = Scanner().withDelegate(ScanDelegate())
@@ -169,13 +216,12 @@ def main():
 
     # while True:
     #     pass
-    while True:
-        try:
-            scanner.scan(1.0) # スキャンする。デバイスを見つけた後の処理はScanDelegateに任せる
-        except BTLEException as e:
-            DBG('BTLE Exception while scannning.')
-            DBG('  type:' + str(type(e)))
-            DBG('  args:' + str(e.args))
+    #     try:
+    #         scanner.scan(1.0) # スキャンする。デバイスを見つけた後の処理はScanDelegateに任せる
+    #     except BTLEException as e:
+    #         DBG('BTLE Exception while scannning.')
+    #         DBG('  type:' + str(type(e)))
+    #         DBG('  args:' + str(e.args))
 
 if __name__ == "__main__":
     main()
